@@ -1,0 +1,99 @@
+name: "Migração de repos do Azure DevOps para GitHub"
+
+env:
+  GH_PAT: ${{ secrets.TARGET_TOKEN }}
+  ADO_PAT: ${{ secrets.SOURCE_TOKEN }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      ado_org:
+        description: "Organização do Azure DevOps"
+        required: true
+        default: "dan555lvl"
+        type: string
+      target_org:
+        description: "Organização de destino no GitHub"
+        required: true
+        default: "gdp-projects"
+        type: string
+      ado_proj_list:
+        description: "Lista de projetos do Azure DevOps (separados por vírgula)"
+        required: true
+        default: "proj1,proj2,proj3"
+        type: string
+      ado_team_project:
+        description: "Nome do time do Azure DevOps (opcional)"
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  setup-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.projects }}
+    steps:
+      - name: "Configurar matriz de projetos"
+        id: set-matrix
+        run: |
+          repos_json=$(echo "${{ github.event.inputs.ado_proj_list }}" | tr -d ' ' | tr ',' '\n' | jq -R . | jq -s -c .)
+          echo "projects=$repos_json" >> $GITHUB_OUTPUT
+  
+  migrate-projects:
+    needs: setup-matrix
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        projects: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
+      fail-fast: false
+    steps:
+      - name: "Configure Migrator Role ADO2GH"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh extension install github/gh-ado2gh
+          gh ado2gh grant-migrator-role --actor ${{ github.actor }} --actor-type USER --github-org gdp-projects
+
+      - name: "Migrar projeto ${{ matrix.projects }}"
+        run: |
+          echo "Migrando projeto: ${{ matrix.projects }}" 
+          gh ado2gh migrate-repo \
+          --ado-org "${{ github.event.inputs.ado_org }}" \
+          --ado-team-project "${{ github.event.inputs.ado_team_project || matrix.projects }}" \
+          --ado-repo ${{ matrix.projects }} \
+          --github-org ${{ github.event.inputs.target_org }} \
+          --github-repo ${{ matrix.projects }}
+
+      - name: "Relatório de migração"
+        if: always()
+        run: echo "${{ matrix.projects }},${{ job.status }}" > status.txt
+
+      - name: "Publicar relatório"
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: "status-${{ matrix.projects }}"
+          path: status.txt
+
+
+  relatorio-final:
+    needs: migrate-projects
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: "Baixar relatórios de migração"
+        uses: actions/download-artifact@v4
+        with:
+          path: migration-statuses
+
+      - name: Gerar relatório
+        run: |
+          echo "# Relatório de Migração ADO para GH" >> $GITHUB_STEP_SUMMARY
+          find migration-statuses -name 'status.txt' -exec cat {} + | while IFS=, read -r repo status; do
+            if [ "$status" == "success" ]; then
+              echo "- ✅ $repo" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "- ❌ $repo" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
