@@ -49,7 +49,9 @@ jobs:
       fail-fast: false
     steps:
       - name: "Configure Migrator Role ADO2GH"
-        run: "gh ado2gh grant-migrator-role --actor ${{ github.actor }} --actor-type USER --github-org gdp-projects"
+        run: |
+          gh extension install github/gh-ado2gh
+          gh ado2gh grant-migrator-role --actor ${{ github.actor }} --actor-type USER --github-org gdp-projects
 
       - name: "Migrar projeto ${{ matrix.projects }}"
         run: |
