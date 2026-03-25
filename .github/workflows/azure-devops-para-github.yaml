@@ -91,7 +91,7 @@ jobs:
         run: "echo ${{ matrix.project }}: ${{ job.status }} >> migration_result.txt"
         
       - name: "Salvar artefato de resultado da migração do projeto ${{ matrix.project }}"
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: migration-result-${{ matrix.project }}
           path: migration_result.txt
@@ -102,7 +102,7 @@ jobs:
     if: always()
     steps:
       - name: "Baixar artefatos de migração"
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: migration-result-*
 
