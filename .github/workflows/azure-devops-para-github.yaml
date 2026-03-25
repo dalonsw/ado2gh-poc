@@ -59,8 +59,9 @@ jobs:
 
       - name: "Executar migração do projeto ${{ matrix.project }}"
         env:
-          GH_PAT: ${{ secrets.TARGET_TOKEN }}
+          GH_TOKEN: ${{ secrets.TARGET_TOKEN }}
         run: |
+          export GH_PAT=$(gh auth token)
           gh ado2gh migrate project --ado-org ${{ github.event.inputs.ado_org }} --ado-project ${{ matrix.project }} --github-org ${{ github.event.inputs.target_org }} --validator-team ${{ github.event.inputs.validator_team }} --team-permission ${{ github.event.inputs.team_permission }} --pr-approver-team ${{ github.event.inputs.pr_approver_team }}
           
       - name: "Aguardar migração do projeto ${{ matrix.project }}"
