@@ -51,22 +51,17 @@ jobs:
         run: "echo Migrando projeto: ${{ matrix.project }}"
 
       - name: "Configurar ambiente de migração"
-        env:
-          GH_TOKEN: ${{ secrets.TARGET_TOKEN }}
         run: |
             gh extension install github/gh-ado2gh
             gh ado2gh grant-migrator-role --actor ${{ github.actor }} --actor-type USER --github-org ${{ github.event.inputs.target_org }}
 
       - name: "Executar migração do projeto ${{ matrix.project }}"
         env:
-          GH_TOKEN: ${{ secrets.TARGET_TOKEN }}
+          GH_PAT: ${{ secrets.TARGET_TOKEN }}
         run: |
-          export GH_PAT=${{ secrets.TARGET_TOKEN }}
           gh ado2gh migrate project --ado-org ${{ github.event.inputs.ado_org }} --ado-project ${{ matrix.project }} --github-org ${{ github.event.inputs.target_org }} --validator-team ${{ github.event.inputs.validator_team }} --team-permission ${{ github.event.inputs.team_permission }} --pr-approver-team ${{ github.event.inputs.pr_approver_team }}
           
       - name: "Aguardar migração do projeto ${{ matrix.project }}"
-        env:
-          GH_TOKEN: ${{ secrets.TARGET_TOKEN }}
         run: |
           echo "Aguardando migração do projeto ${{ matrix.project }} ser concluída..."
           max_attempts=120
