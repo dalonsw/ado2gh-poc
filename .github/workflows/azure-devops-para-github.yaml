@@ -49,7 +49,7 @@ jobs:
     strategy:
       matrix:
         project: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
-        fail-fast: false
+      fail-fast: false
     steps:
       - name: "Migrar projeto ${{ matrix.project }}"
         run: "echo Migrando projeto: ${{ matrix.project }}"
