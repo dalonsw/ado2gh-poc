@@ -55,11 +55,12 @@ jobs:
           GH_TOKEN: ${{ secrets.TARGET_TOKEN }}
         run: |
             gh extension install github/gh-ado2gh
+            gh auth login --with-token < ${{ secrets.TARGET_TOKEN }}
             gh ado2gh grant-migrator-role --actor ${{ github.actor }} --actor-type USER --github-org ${{ github.event.inputs.target_org }}
 
       - name: "Executar migração do projeto ${{ matrix.project }}"
         env:
-          GH_PAT: ${{ secrets.TARGET_TOKEN }}
+          GH_TOKEN: ${{ secrets.TARGET_TOKEN }}
         run: |
           gh ado2gh migrate project --ado-org ${{ github.event.inputs.ado_org }} --ado-project ${{ matrix.project }} --github-org ${{ github.event.inputs.target_org }} --validator-team ${{ github.event.inputs.validator_team }} --team-permission ${{ github.event.inputs.team_permission }} --pr-approver-team ${{ github.event.inputs.pr_approver_team }}
           
