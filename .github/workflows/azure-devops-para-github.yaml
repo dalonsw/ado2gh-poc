@@ -1,0 +1,115 @@
+name: "Migração do Azure DevOps para GitHub"
+
+on:
+  workflow_dispatch:
+    inputs:
+      ado_org:
+        description: "Nome da organização no Azure DevOps"
+        required: true
+      target_org:
+        description: "Nome da organização de destino no GitHub"
+        required: true
+      ado_projects_list:
+        description: "Lista de projetos no Azure DevOps (separados por vírgula)"
+        required: true
+        type: string
+      validator_team:
+        description: "Nome da equipe de validação no GitHub"
+        type: string
+      team_permission:
+        description: "Permissão da equipe de validação (triage, push, maintain, admin)"
+        type: choice
+        options: [triage, push, maintain, admin]
+        default: push
+      pr_approver_team:
+        description: 'Slug do time responsável pela aprovação (ex: GR-PR-APPROVERS)'
+        required: true
+        type: string
+
+
+jobs:
+  setup-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: "Configurar matriz de projetos"
+        id: set-matrix
+        # Gerar a matriz de projetos a partir da lista fornecida 
+        run: |
+          # Transforma a string de projetos em um array JSON para ser usado como matriz.
+          repos_json=$(echo "${{ github.event.inputs.ado_projects_list }}" | tr -d ' ' | tr ',' '\n' | jq -R . | jq -s -c .)
+
+          # Joga o JSON pronto para a variável de saída do job.
+          echo "repos=${repos_json}" >> $GITHUB_OUTPUT
+
+  migrate-projects:
+    needs: setup-matrix
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        project: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
+        fail-fast: false
+    steps:
+      - name: "Migrar projeto ${{ matrix.project }}"
+        run: "echo Migrando projeto: ${{ matrix.project }}"
+
+      - name: "Configurar ambiente de migração"
+        env:
+          GH_TOKEN: ${{ secrets.TARGET_TOKEN }}
+        run: |
+            gh extension install github/gh-ado2gh
+            gh ado2gh grant-migrator-role --actor ${{ github.actor }} --actor-type USER --github-org ${{ github.event.inputs.target_org }}
+
+      - name: "Executar migração do projeto ${{ matrix.project }}"
+        env:
+          GH_TOKEN: ${{ secrets.TARGET_TOKEN }}
+        run: |
+          gh ado2gh migrate project --ado-org ${{ github.event.inputs.ado_org }} --ado-project ${{ matrix.project }} --github-org ${{ github.event.inputs.target_org }} --validator-team ${{ github.event.inputs.validator_team }} --team-permission ${{ github.event.inputs.team_permission }} --pr-approver-team ${{ github.event.inputs.pr_approver_team }}
+          
+      - name: "Aguardar migração do projeto ${{ matrix.project }}"
+        env:
+          GH_TOKEN: ${{ secrets.TARGET_TOKEN }}
+        run: |
+          echo "Aguardando migração do projeto ${{ matrix.project }} ser concluída..."
+          while true; do
+            status=$(gh ado2gh migrate status --github-org ${{ github.event.inputs.target_org }} --ado-project ${{ matrix.project }} --json status -q '.status')
+            if [[ "$status" == "completed" ]]; then
+              echo "Migração do projeto ${{ matrix.project }} concluída!"
+              break
+            elif [[ "$status" == "failed" ]]; then
+              echo "Migração do projeto ${{ matrix.project }} falhou."
+              exit 1
+            else
+              echo "Status atual: $status. Verificando novamente em 30 segundos..."
+              sleep 30
+            fi
+          done
+
+      - name: "Registrar resultado da migração do projeto ${{ matrix.project }}"
+        if: always()
+        run: "echo ${{ matrix.project }}: ${{ job.status }} >> migration_result.txt"
+        
+      - name: "Salvar artefato de resultado da migração do projeto ${{ matrix.project }}"
+        uses: actions/upload-artifact@v3
+        with:
+          name: migration-result-${{ matrix.project }}
+          path: migration_result.txt
+
+  summarize-results:
+    needs: migrate-projects
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: "Baixar artefatos de migração"
+        uses: actions/download-artifact@v3
+        with:
+          name: migration-result-*
+
+      - name: "Gerar resumo da migração"
+        run: |
+          echo "## Resumo da Migração ADO para GitHub:" > migration_summary.txt
+          for file in migration-result-*.txt; do
+            cat "$file" >> migration_summary.txt
+          done
+          cat migration_summary.txt
