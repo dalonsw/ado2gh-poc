@@ -1,118 +1,58 @@
-name: "Migração do Azure DevOps para GitHub"
+name: "Migração de repos do Azure DevOps para GitHub"
+
+env:
+  GH_PAT: ${{ secrets.TARGET_TOKEN }}
+  ADO_PAT: ${{ secrets.SOURCE_TOKEN }}
 
 on:
   workflow_dispatch:
     inputs:
       ado_org:
-        description: "Nome da organização no Azure DevOps"
+        description: "Organização do Azure DevOps"
         required: true
+        default: "dan555lvl"
+        type: string
       target_org:
-        description: "Nome da organização de destino no GitHub"
+        description: "Organização de destino no GitHub"
         required: true
-      ado_projects_list:
-        description: "Lista de projetos no Azure DevOps (separados por vírgula)"
+        default: "gdp-projects"
+        type: string
+      ado_proj_list:
+        description: "Lista de projetos do Azure DevOps (separados por vírgula)"
         required: true
+        default: "proj1,proj2,proj3"
         type: string
-      validator_team:
-        description: "Nome da equipe de validação no GitHub"
+      ado_team_project:
+        description: "Nome do time do Azure DevOps (opcional)"
+        required: false
+        default: ""
         type: string
-      team_permission:
-        description: "Permissão da equipe de validação (triage, push, maintain, admin)"
-        type: choice
-        options: [triage, push, maintain, admin]
-        default: push
-      pr_approver_team:
-        description: 'Slug do time responsável pela aprovação (ex: GR-PR-APPROVERS)'
-        required: true
-        type: string
-
 
 jobs:
   setup-matrix:
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      matrix: ${{ steps.set-matrix.outputs.projects }}
     steps:
       - name: "Configurar matriz de projetos"
         id: set-matrix
         run: |
-          repos_json=$(echo "${{ github.event.inputs.ado_projects_list }}" | tr -d ' ' | tr ',' '\n' | jq -R . | jq -s -c .)
-          echo "matrix=${repos_json}" >> $GITHUB_OUTPUT
-
+          repos_json=$(echo "${{ github.event.inputs.ado_proj_list }}" | tr -d ' ' | tr ',' '\n' | jq -R . | jq -s -c .)
+          echo "projects=$repos_json" >> $GITHUB_OUTPUT
+  
   migrate-projects:
     needs: setup-matrix
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        project: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
+        projects: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
       fail-fast: false
     steps:
-      - name: "Migrar projeto ${{ matrix.project }}"
-        run: "echo Migrando projeto: ${{ matrix.project }}"
+      - name: "Configure Migrator Role ADO2GH"
+        run: "gh ado2gh grant-migrator-role --actor ${{ github.actor }} --actor-type USER --github-org gdp-projects"
 
-      - name: "Configurar ambiente de migração"
-        env:
-          GH_TOKEN: ${{ secrets.TARGET_TOKEN }}
-          GH_PAT: ${{ secrets.TARGET_TOKEN }}
+      - name: "Migrar projeto ${{ matrix.projects }}"
         run: |
-            gh extension install github/gh-ado2gh
-            gh ado2gh configure --actor-type USER --github-org ${{ github.event.inputs.target_org }}
-
-      - name: "Executar migração do projeto ${{ matrix.project }}"
-        env:
-          GH_TOKEN: ${{ secrets.TARGET_TOKEN }}
-          GH_PAT: ${{ secrets.TARGET_TOKEN }}
-        run: |
-          gh ado2gh migrate project --ado-org ${{ github.event.inputs.ado_org }} --ado-project ${{ matrix.project }} --github-org ${{ github.event.inputs.target_org }} --validator-team ${{ github.event.inputs.validator_team }} --team-permission ${{ github.event.inputs.team_permission }} --pr-approver-team ${{ github.event.inputs.pr_approver_team }}
+          echo "Migrando projeto: ${{ matrix.projects }}"
+          gh ado2gh migrate-project --ado-org ${{ github.event.inputs.ado_org }} --ado-team-project ${{ github.event.inputs.ado_team_project || format('{0} Team', matrix.projects) }} --ado-repo ${{ matrix.projects }} --github-org ${{ github.event.inputs.target_org }} --github-repo ${{ matrix.projects }}
           
-      - name: "Aguardar migração do projeto ${{ matrix.project }}"
-        env:
-          GH_TOKEN: ${{ secrets.TARGET_TOKEN }}
-          GH_PAT: ${{ secrets.TARGET_TOKEN }}
-        run: |
-          echo "Aguardando migração do projeto ${{ matrix.project }} ser concluída..."
-          max_attempts=120
-          attempt=0
-          while [ $attempt -lt $max_attempts ]; do
-            status=$(gh ado2gh migrate status --github-org ${{ github.event.inputs.target_org }} --ado-project ${{ matrix.project }} --json status -q '.status' 2>/dev/null || echo "pending")
-            if [[ "$status" == "completed" ]]; then
-              echo "Migração do projeto ${{ matrix.project }} concluída!"
-              break
-            elif [[ "$status" == "failed" ]]; then
-              echo "Migração do projeto ${{ matrix.project }} falhou."
-              exit 1
-            else
-              echo "Status atual: $status. Verificando novamente em 30 segundos..."
-              sleep 30
-              ((attempt++))
-            fi
-          done
-
-      - name: "Registrar resultado da migração do projeto ${{ matrix.project }}"
-        if: always()
-        run: "echo ${{ matrix.project }}: ${{ job.status }} >> migration_result.txt"
-        
-      - name: "Salvar artefato de resultado da migração do projeto ${{ matrix.project }}"
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: migration-result-${{ matrix.project }}
-          path: migration_result.txt
-
-  summarize-results:
-    needs: migrate-projects
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-      - name: "Baixar artefatos de migração"
-        uses: actions/download-artifact@v4
-        with:
-          name: migration-result
-
-      - name: "Gerar resumo da migração"
-        run: |
-          echo "## Resumo da Migração ADO para GitHub:" > migration_summary.txt
-          for file in migration-result; do
-            cat "$file" >> migration_summary.txt
-          done
-          cat migration_summary.txt
