@@ -35,13 +35,9 @@ jobs:
     steps:
       - name: "Configurar matriz de projetos"
         id: set-matrix
-        # Gerar a matriz de projetos a partir da lista fornecida 
         run: |
-          # Transforma a string de projetos em um array JSON para ser usado como matriz.
           repos_json=$(echo "${{ github.event.inputs.ado_projects_list }}" | tr -d ' ' | tr ',' '\n' | jq -R . | jq -s -c .)
-
-          # Joga o JSON pronto para a variável de saída do job.
-          echo "repos=${repos_json}" >> $GITHUB_OUTPUT
+          echo "matrix=${repos_json}" >> $GITHUB_OUTPUT
 
   migrate-projects:
     needs: setup-matrix
@@ -72,8 +68,10 @@ jobs:
           GH_TOKEN: ${{ secrets.TARGET_TOKEN }}
         run: |
           echo "Aguardando migração do projeto ${{ matrix.project }} ser concluída..."
-          while true; do
-            status=$(gh ado2gh migrate status --github-org ${{ github.event.inputs.target_org }} --ado-project ${{ matrix.project }} --json status -q '.status')
+          max_attempts=120
+          attempt=0
+          while [ $attempt -lt $max_attempts ]; do
+            status=$(gh ado2gh migrate status --github-org ${{ github.event.inputs.target_org }} --ado-project ${{ matrix.project }} --json status -q '.status' 2>/dev/null || echo "pending")
             if [[ "$status" == "completed" ]]; then
               echo "Migração do projeto ${{ matrix.project }} concluída!"
               break
@@ -83,6 +81,7 @@ jobs:
             else
               echo "Status atual: $status. Verificando novamente em 30 segundos..."
               sleep 30
+              ((attempt++))
             fi
           done
 
@@ -104,7 +103,7 @@ jobs:
       - name: "Baixar artefatos de migração"
         uses: actions/download-artifact@v4
         with:
-          name: migration-result-*
+          name: migration-result
 
       - name: "Gerar resumo da migração"
         run: |
