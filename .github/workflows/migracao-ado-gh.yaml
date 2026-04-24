@@ -17,27 +17,27 @@ on:
         required: true
         default: "gdp-projects"
         type: string
-      ado_proj_list:
-        description: "Lista de projetos do Azure DevOps (separados por vírgula)"
-        required: true
-        default: "proj1,proj2,proj3"
-        type: string
       ado_team_project:
-        description: "Nome do time do Azure DevOps (opcional)"
+        description: "Projeto contendo os repos a serem migrados"
         required: false
         default: ""
+        type: string
+      ado_repo_list:
+        description: "Lista de repos do Azure DevOps (separados por vírgula)"
+        required: true
+        default: "proj1,proj2,proj3"
         type: string
 
 jobs:
   setup-matrix:
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.set-matrix.outputs.projects }}
+      matrix: ${{ steps.set-matrix.outputs.repos }}
     steps:
-      - name: "Configurar matriz de projetos"
+      - name: "Configurar matriz de Repos"
         id: set-matrix
         run: |
-          repos_json=$(echo "${{ github.event.inputs.ado_proj_list }}" | tr -d ' ' | tr ',' '\n' | jq -R . | jq -s -c .)
+          repos_json=$(echo "${{ github.event.inputs.ado_repo_list }}" | tr -d ' ' | tr ',' '\n' | jq -R . | jq -s -c .)
           echo "projects=$repos_json" >> $GITHUB_OUTPUT
   
   migrate-projects:
@@ -60,7 +60,7 @@ jobs:
           echo "Migrando projeto: ${{ matrix.projects }}" 
           gh ado2gh migrate-repo \
           --ado-org "${{ github.event.inputs.ado_org }}" \
-          --ado-team-project "${{ github.event.inputs.ado_team_project || matrix.projects }}" \
+          --ado-team-project "${{ github.event.inputs.ado_team_project }}" \
           --ado-repo ${{ matrix.projects }} \
           --github-org ${{ github.event.inputs.target_org }} \
           --github-repo ${{ matrix.projects }}
