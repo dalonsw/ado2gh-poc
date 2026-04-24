@@ -19,13 +19,13 @@ on:
         type: string
       ado_team_project:
         description: "Projeto contendo os repos a serem migrados"
-        required: false
-        default: ""
+        required: true
+        default: "nome_do_projeto"
         type: string
       ado_repo_list:
         description: "Lista de repos do Azure DevOps (separados por vírgula)"
         required: true
-        default: "proj1,proj2,proj3"
+        default: "lista_de_repos"
         type: string
 
 jobs:
