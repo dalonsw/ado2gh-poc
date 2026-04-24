@@ -55,9 +55,9 @@ jobs:
           gh extension install github/gh-ado2gh
           gh ado2gh grant-migrator-role --actor ${{ github.actor }} --actor-type USER --github-org gdp-projects
 
-      - name: "Migrar projeto ${{ matrix.repos }}"
+      - name: "Migrar repo ${{ matrix.repos }} do projeto ${{ github.event.inputs.ado_team_project }}"
         run: |
-          echo "Migrando projeto: ${{ matrix.repos }}" 
+          echo "Migrando repo: ${{ matrix.repos }}" 
           gh ado2gh migrate-repo \
           --ado-org "${{ github.event.inputs.ado_org }}" \
           --ado-team-project "${{ github.event.inputs.ado_team_project }}" \
