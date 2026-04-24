@@ -45,7 +45,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        projects: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
+        repos: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
       fail-fast: false
     steps:
       - name: "Configure Migrator Role ADO2GH"
@@ -61,9 +61,9 @@ jobs:
           gh ado2gh migrate-repo \
           --ado-org "${{ github.event.inputs.ado_org }}" \
           --ado-team-project "${{ github.event.inputs.ado_team_project }}" \
-          --ado-repo ${{ matrix.projects }} \
+          --ado-repo ${{ matrix.repos }} \
           --github-org ${{ github.event.inputs.target_org }} \
-          --github-repo ${{ matrix.projects }}
+          --github-repo ${{ matrix.repos }}
 
       - name: "Relatório de migração"
         if: always()
