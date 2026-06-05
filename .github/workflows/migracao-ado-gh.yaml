@@ -32,7 +32,7 @@ jobs:
   setup-matrix:
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.set-matrix.outputs.repos }}
+      matrix-repos: ${{ steps.set-matrix.outputs.repos }}
     steps:
       - name: "Configurar matriz de Repos"
         id: set-matrix
@@ -45,7 +45,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        repos: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
+        repos: ${{ fromJson(needs.setup-matrix.outputs.matrix-repos) }}
       fail-fast: false
     steps:
       - name: "Configure Migrator Role ADO2GH"
@@ -53,7 +53,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh extension install github/gh-ado2gh
-          gh ado2gh grant-migrator-role --actor ${{ github.actor }} --actor-type USER --github-org gdp-projects
+          gh ado2gh grant-migrator-role --actor ${{ github.actor }} --actor-type USER --github-org ${{ github.event.inputs.target_org }}
 
       - name: "Migrar repo ${{ matrix.repos }} do projeto ${{ github.event.inputs.ado_team_project }}"
         run: |
@@ -89,6 +89,52 @@ jobs:
         with:
           name: "status-${{ matrix.repos }}"
           path: status.txt
+
+  configure-metadata:
+    needs: [setup-matrix, migrate-projects]
+    runs-on: ubuntu-latest
+    if: success()
+    strategy:
+      matrix:
+        repos: ${{ fromJson(needs.setup-matrix.outputs.matrix-repos) }}
+    steps:
+      - name: "Configurar GH CLI"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh auth setup-git
+          gh auth login --with-token < ${{ secrets.TARGET_TOKEN }}
+
+      - name: "Configurar metadata dos repositórios migrados"
+        run: |
+          gh repo edit ${{ github.event.inputs.target_org }}/${{ matrix.repos }} --topic ${{ inputs.ado_team_project }} --description "Migrado do Azure DevOps - Projeto: ${{ github.event.inputs.ado_team_project }}"
+
+      - name: "Configurar branch principal"
+        run: |
+          gh repo edit ${{ github.event.inputs.target_org }}/${{ matrix.repos }} --default-branch main
+
+      - name: "Criar CODEOWNERS"
+        run: |
+          echo ".github/* @${{ github.event.inputs.target_org }}/grp-corporate-sre-base" > CODEOWNERS
+          echo "* @${{ github.event.inputs.target_org }}/grp-corporate-${{ github.event.inputs.ado_team_project }}-maintainers" >> CODEOWNERS
+
+          gh repo upload ${{ github.event.inputs.target_org }}/${{ matrix.repos }} CODEOWNERS --repo ${{ github.event.inputs.target_org }}/${{ matrix.repos }} --message "Add CODEOWNERS file"
+        
+      - name: "Criar PR Template"
+        run: |
+          mkdir -p .github
+          echo "# Descrição" > .github/pull_request_template.md
+          echo "Descreva as mudanças propostas neste PR." >> .github/pull_request_template.md
+          echo "" >> .github/pull_request_template.md
+          echo "## Tipo de mudança" >> .github/pull_request_template.md
+          echo "- [ ] Bug fix (correção de um problema)" >> .github/pull_request_template.md
+          echo "- [ ] Nova funcionalidade (adição de uma funcionalidade)" >> .github/pull_request_template.md
+          echo "- [ ] Melhoria (melhoria de uma funcionalidade existente)" >> .github/pull_request_template.md
+          echo "- [ ] Refatoração (alteração de código sem adicionar ou corrigir funcionalidades)" >> .github/pull_request_template.md
+          echo "- [ ] Documentação (adição ou atualização de documentação)" >> .github/pull_request_template.md
+          echo "- [ ] Outro (especifique)" >> .github/pull_request_template.md
+
+          gh repo upload ${{ github.event.inputs.target_org }}/${{ matrix.repos }} .github/pull_request_template.md --repo ${{ github.event.inputs.target_org }}/${{ matrix.repos }} --message "Add PR template" 
 
   relatorio-final:
     needs: migrate-projects
