@@ -112,26 +112,19 @@ jobs:
 
       - name: "Criar CODEOWNERS"
         run: |
-          echo ".github/* @${{ github.event.inputs.target_org }}/grp-corporate-sre-base" > CODEOWNERS
-          echo "* @${{ github.event.inputs.target_org }}/grp-corporate-${{ github.event.inputs.ado_team_project }}-maintainers" >> CODEOWNERS
-
-          gh repo upload ${{ github.event.inputs.target_org }}/${{ matrix.repos }} CODEOWNERS --repo ${{ github.event.inputs.target_org }}/${{ matrix.repos }} --message "Add CODEOWNERS file"
+          CONTENT=$(printf ".github/* @${{ github.event.inputs.target_org }}/grp-corporate-sre-base\n* @${{ github.event.inputs.target_org }}/grp-corporate-${{ github.event.inputs.ado_team_project }}-maintainers" | base64 -w0)
+          gh api repos/${{ github.event.inputs.target_org }}/${{ matrix.repos }}/contents/.github/CODEOWNERS \
+            --method PUT \
+            -f message="Add CODEOWNERS file" \
+            -f content="$CONTENT"
         
       - name: "Criar PR Template"
         run: |
-          mkdir -p .github
-          echo "# Descrição" > .github/pull_request_template.md
-          echo "Descreva as mudanças propostas neste PR." >> .github/pull_request_template.md
-          echo "" >> .github/pull_request_template.md
-          echo "## Tipo de mudança" >> .github/pull_request_template.md
-          echo "- [ ] Bug fix (correção de um problema)" >> .github/pull_request_template.md
-          echo "- [ ] Nova funcionalidade (adição de uma funcionalidade)" >> .github/pull_request_template.md
-          echo "- [ ] Melhoria (melhoria de uma funcionalidade existente)" >> .github/pull_request_template.md
-          echo "- [ ] Refatoração (alteração de código sem adicionar ou corrigir funcionalidades)" >> .github/pull_request_template.md
-          echo "- [ ] Documentação (adição ou atualização de documentação)" >> .github/pull_request_template.md
-          echo "- [ ] Outro (especifique)" >> .github/pull_request_template.md
-
-          gh repo upload ${{ github.event.inputs.target_org }}/${{ matrix.repos }} .github/pull_request_template.md --repo ${{ github.event.inputs.target_org }}/${{ matrix.repos }} --message "Add PR template" 
+          CONTENT=$(printf "# Descrição\nDescreva as mudanças propostas neste PR.\n\n## Tipo de mudança\n- [ ] Bug fix (correção de um problema)\n- [ ] Nova funcionalidade (adição de uma funcionalidade)\n- [ ] Melhoria (melhoria de uma funcionalidade existente)\n- [ ] Refatoração (alteração de código sem adicionar ou corrigir funcionalidades)\n- [ ] Documentação (adição ou atualização de documentação)\n- [ ] Outro (especifique)" | base64 -w0)
+          gh api repos/${{ github.event.inputs.target_org }}/${{ matrix.repos }}/contents/.github/pull_request_template.md \
+            --method PUT \
+            -f message="Add PR template" \
+            -f content="$CONTENT"
 
   relatorio-final:
     needs: migrate-projects
