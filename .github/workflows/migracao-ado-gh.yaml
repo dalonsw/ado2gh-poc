@@ -10,12 +10,12 @@ on:
       ado_org:
         description: "Organização do Azure DevOps"
         required: true
-        default: "dan555lvl"
+        default: ""
         type: string
       target_org:
         description: "Organização de destino no GitHub"
         required: true
-        default: "gdp-projects"
+        default: ""
         type: string
       ado_team_project:
         description: "Projeto contendo os repos a serem migrados"
@@ -25,7 +25,7 @@ on:
       ado_repo_list:
         description: "Lista de repos do Azure DevOps (separados por vírgula)"
         required: true
-        default: "lista_de_repos"
+        default: "repo1,repo2,repo3"
         type: string
 
 jobs:
@@ -65,6 +65,12 @@ jobs:
           --github-org ${{ github.event.inputs.target_org }} \
           --github-repo ${{ matrix.repos }}
 
+      - name: Arquivar repo ${{ matrix.repos }} no Azure DevOps
+        if: success()
+        run: |
+          echo "Arquivando repositórios do Azure DevOps..."
+          az repos update --organization https://dev.azure.com/${{ github.event.inputs.ado_org }} --project ${{ github.event.inputs.ado_team_project }} --repository ${{ matrix.repos }} --is-archived true
+
       - name: "Relatório de migração"
         if: always()
         run: echo "${{ matrix.repos }},${{ job.status }}" > status.txt
@@ -75,7 +81,6 @@ jobs:
         with:
           name: "status-${{ matrix.repos }}"
           path: status.txt
-
 
   relatorio-final:
     needs: migrate-projects
