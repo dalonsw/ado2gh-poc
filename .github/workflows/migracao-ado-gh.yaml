@@ -98,12 +98,9 @@ jobs:
       matrix:
         repos: ${{ fromJson(needs.setup-matrix.outputs.matrix-repos) }}
     steps:
-      - name: "Configurar GH CLI"
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: "Configurar GitHub CLI"
         run: |
-          gh auth setup-git
-          gh auth login --with-token < ${{ env.GH_PAT }}
+          echo ${{ secrets.TARGET_TOKEN }} | gh auth login --with-token
 
       - name: "Configurar metadata dos repositórios migrados"
         run: |
