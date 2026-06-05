@@ -104,7 +104,7 @@ jobs:
 
       - name: "Configurar metadata dos repositórios migrados"
         run: |
-          gh repo edit ${{ github.event.inputs.target_org }}/${{ matrix.repos }} --topic ${{ inputs.ado_team_project }} --description "Migrado do Azure DevOps - Projeto: ${{ github.event.inputs.ado_team_project }}"
+          gh repo edit ${{ github.event.inputs.target_org }}/${{ matrix.repos }} --add-topic ${{ inputs.ado_team_project }} --description "Migrado do Azure DevOps - Projeto: ${{ github.event.inputs.ado_team_project }}"
 
       - name: "Configurar branch principal"
         run: |
