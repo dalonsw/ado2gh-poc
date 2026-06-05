@@ -68,8 +68,16 @@ jobs:
       - name: Arquivar repo ${{ matrix.repos }} no Azure DevOps
         if: success()
         run: |
-          echo "Arquivando repositórios do Azure DevOps..."
-          az repos update --organization https://dev.azure.com/${{ github.event.inputs.ado_org }} --project ${{ github.event.inputs.ado_team_project }} --repository ${{ matrix.repos }} --is-archived true
+          echo "Desabilitando repositório no Azure DevOps..."
+          REPO_ID=$(curl -sf \
+            -H "Authorization: Basic $(echo -n ":$ADO_PAT" | base64 -w0)" \
+            "https://dev.azure.com/${{ github.event.inputs.ado_org }}/${{ github.event.inputs.ado_team_project }}/_apis/git/repositories/${{ matrix.repos }}?api-version=7.1" \
+            | jq -r '.id')
+          curl -sf -X PATCH \
+            -H "Authorization: Basic $(echo -n ":$ADO_PAT" | base64 -w0)" \
+            -H "Content-Type: application/json" \
+            "https://dev.azure.com/${{ github.event.inputs.ado_org }}/${{ github.event.inputs.ado_team_project }}/_apis/git/repositories/$REPO_ID?api-version=7.1" \
+            -d '{"isDisabled": true}'
 
       - name: "Relatório de migração"
         if: always()
