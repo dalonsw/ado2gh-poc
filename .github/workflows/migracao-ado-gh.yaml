@@ -58,7 +58,10 @@ jobs:
             "${{ matrix.repos }}.git"
  
           cd "${{ matrix.repos }}.git"
- 
+
+          # Remove refs/pull/* que o GitHub rejeita como hidden refs
+          git for-each-ref --format='delete %(refname)' refs/pull | git update-ref --stdin
+
           # Aponta origin para o repo já existente no GitHub
           git remote set-url origin \
             "https://x-access-token:${{ secrets.TARGET_TOKEN }}@github.com/${{ github.event.inputs.target_org }}/${{ matrix.repos }}.git"
