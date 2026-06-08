@@ -57,19 +57,31 @@ jobs:
         id: check-repo
         run: |
           echo "Verificando se o repo ${{ matrix.repos }} existe e está vazio no GitHub..."
-          if gh repo view "${{ github.event.inputs.target_org }}/${{ matrix.repos }}" > /dev/null 2>&1; then
-            if [ -n "$(gh api repos/${{ github.event.inputs.target_org }}/${{ matrix.repos }}/git/refs/heads --jq '.value | length')" ]; then
-              echo "O repositório ${{ matrix.repos }} já existe e não está vazio. Pulando migração."
-              exit 1
-            else
-              echo "O repositório ${{ matrix.repos }} já existe mas está vazio. Continuando migração."
-            fi
-          else
-            echo "O repositório ${{ matrix.repos }} não existe. Crie o repositório via Terraform no GitHub antes de rodar a migração."
+
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: token $GH_PAT" \
+            "https://api.github.com/repos/${{ github.event.inputs.target_org }}/${{ matrix.repos }}")
+
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "O repositório ${{ matrix.repos }} não existe (HTTP $HTTP_STATUS). Crie o repositório via Terraform no GitHub antes de rodar a migração."
             exit 1
           fi
 
+          REF_COUNT=$(curl -s \
+            -H "Authorization: token $GH_PAT" \
+            "https://api.github.com/repos/${{ github.event.inputs.target_org }}/${{ matrix.repos }}/git/refs" \
+            | jq 'length')
+
+          if [ "$REF_COUNT" -gt 0 ]; then
+            echo "O repositório ${{ matrix.repos }} já existe e não está vazio ($REF_COUNT refs). Pulando migração."
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "O repositório ${{ matrix.repos }} existe e está vazio. Continuando migração."
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: "Migrar repo ${{ matrix.repos }} via git mirror"
+        if: steps.check-repo.outputs.skip != 'true'
         run: |
           echo "Migrando repo: ${{ matrix.repos }}"
  
@@ -92,7 +104,7 @@ jobs:
 
 
       - name: Arquivar repo ${{ matrix.repos }} no Azure DevOps
-        if: ${{ github.event.inputs.archive_ado_repos && success() }}
+        if: steps.check-repo.outputs.skip != 'true' && inputs.archive_ado_repos && success()
         run: |
           echo "Desabilitando repositório no Azure DevOps..."
           REPO_ID=$(curl -sf \
