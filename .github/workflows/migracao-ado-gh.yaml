@@ -67,10 +67,22 @@ jobs:
             exit 1
           fi
 
-          REF_COUNT=$(curl -s \
+          REFS_RESPONSE=$(curl -s -w "\n%{http_code}" \
             -H "Authorization: token $GH_PAT" \
-            "https://api.github.com/repos/${{ github.event.inputs.target_org }}/${{ matrix.repos }}/git/refs" \
-            | jq 'length')
+            "https://api.github.com/repos/${{ github.event.inputs.target_org }}/${{ matrix.repos }}/git/refs")
+
+          REFS_HTTP=$(echo "$REFS_RESPONSE" | tail -1)
+          REFS_BODY=$(echo "$REFS_RESPONSE" | head -n -1)
+
+          if [ "$REFS_HTTP" = "409" ]; then
+            # 409 = "Git Repository is empty" — repo existe mas não tem commits
+            REF_COUNT=0
+          elif [ "$REFS_HTTP" = "200" ]; then
+            REF_COUNT=$(echo "$REFS_BODY" | jq 'length')
+          else
+            echo "Erro ao verificar refs do repositório ${{ matrix.repos }} (HTTP $REFS_HTTP)."
+            exit 1
+          fi
 
           if [ "$REF_COUNT" -gt 0 ]; then
             echo "O repositório ${{ matrix.repos }} já existe e não está vazio ($REF_COUNT refs)."
