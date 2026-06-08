@@ -73,9 +73,9 @@ jobs:
             | jq 'length')
 
           if [ "$REF_COUNT" -gt 0 ]; then
-            echo "O repositório ${{ matrix.repos }} já existe e não está vazio ($REF_COUNT refs). Pulando migração."
+            echo "O repositório ${{ matrix.repos }} já existe e não está vazio ($REF_COUNT refs)."
             echo "skip=true" >> $GITHUB_OUTPUT
-            exit 0
+            exit 1
           else
             echo "O repositório ${{ matrix.repos }} existe e está vazio. Continuando migração."
             echo "skip=false" >> $GITHUB_OUTPUT
