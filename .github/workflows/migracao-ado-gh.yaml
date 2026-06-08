@@ -48,22 +48,24 @@ jobs:
         repos: ${{ fromJson(needs.setup-matrix.outputs.matrix-repos) }}
       fail-fast: false
     steps:
-      - name: "Configure Migrator Role ADO2GH"
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: "Migrar repo ${{ matrix.repos }} via git mirror"
         run: |
-          gh extension install github/gh-ado2gh
-          gh ado2gh grant-migrator-role --actor ${{ github.actor }} --actor-type USER --github-org ${{ github.event.inputs.target_org }}
+          echo "Migrando repo: ${{ matrix.repos }}"
+ 
+          # Clona espelho do ADO usando o PAT na URL
+          git clone --mirror \
+            "https://anything:${{ secrets.SOURCE_TOKEN }}@dev.azure.com/${{ github.event.inputs.ado_org }}/${{ github.event.inputs.ado_team_project }}/_git/${{ matrix.repos }}" \
+            "${{ matrix.repos }}.git"
+ 
+          cd "${{ matrix.repos }}.git"
+ 
+          # Aponta origin para o repo já existente no GitHub
+          git remote set-url origin \
+            "https://x-access-token:${{ secrets.TARGET_TOKEN }}@github.com/${{ github.event.inputs.target_org }}/${{ matrix.repos }}.git"
+ 
+          # Push de todas as branches, tags e refs
+          git push --mirror
 
-      - name: "Migrar repo ${{ matrix.repos }} do projeto ${{ github.event.inputs.ado_team_project }}"
-        run: |
-          echo "Migrando repo: ${{ matrix.repos }}" 
-          gh ado2gh migrate-repo \
-          --ado-org "${{ github.event.inputs.ado_org }}" \
-          --ado-team-project "${{ github.event.inputs.ado_team_project }}" \
-          --ado-repo ${{ matrix.repos }} \
-          --github-org ${{ github.event.inputs.target_org }} \
-          --github-repo ${{ matrix.repos }}
 
       - name: Arquivar repo ${{ matrix.repos }} no Azure DevOps
         if: success()
