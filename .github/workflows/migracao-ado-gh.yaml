@@ -27,6 +27,11 @@ on:
         required: true
         default: "repo1,repo2,repo3"
         type: string
+      archive_ado_repos:
+        description: "Arquivar os repositórios no Azure DevOps após migração (default: true)"
+        required: false
+        default: true
+        type: boolean
 
 jobs:
   setup-matrix:
@@ -48,6 +53,22 @@ jobs:
         repos: ${{ fromJson(needs.setup-matrix.outputs.matrix-repos) }}
       fail-fast: false
     steps:
+      - name: Verificar se o repo ${{ matrix.repos }} está vazio no GitHub
+        id: check-repo
+        run: |
+          echo "Verificando se o repo ${{ matrix.repos }} existe e está vazio no GitHub..."
+          if gh repo view "${{ github.event.inputs.target_org }}/${{ matrix.repos }}" > /dev/null 2>&1; then
+            if [ -n "$(gh api repos/${{ github.event.inputs.target_org }}/${{ matrix.repos }}/git/refs/heads --jq '.value | length')" ]; then
+              echo "O repositório ${{ matrix.repos }} já existe e não está vazio. Pulando migração."
+              exit 1
+            else
+              echo "O repositório ${{ matrix.repos }} já existe mas está vazio. Continuando migração."
+            fi
+          else
+            echo "O repositório ${{ matrix.repos }} não existe. Crie o repositório via Terraform no GitHub antes de rodar a migração."
+            exit 1
+          fi
+
       - name: "Migrar repo ${{ matrix.repos }} via git mirror"
         run: |
           echo "Migrando repo: ${{ matrix.repos }}"
@@ -71,7 +92,7 @@ jobs:
 
 
       - name: Arquivar repo ${{ matrix.repos }} no Azure DevOps
-        if: success()
+        if: ${{ github.event.inputs.archive_ado_repos && success() }}
         run: |
           echo "Desabilitando repositório no Azure DevOps..."
           REPO_ID=$(curl -sf \
