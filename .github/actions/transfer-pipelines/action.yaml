@@ -29,8 +29,8 @@ runs:
         echo "Movendo pipelines para o diretório .github/workflows/"
 
         mkdir -p .github/workflows/
-        mv .pipelines/*.yaml .github/workflows/
-        rm -rf .pipelines/${{ steps.normalize-repo.outputs.repo_name }}
+        mv .pipeline/*.yaml .github/workflows/
+        rm -rf .pipeline/${{ steps.normalize-repo.outputs.repo_name }}
 
         git add .github/workflows/*
         git commit -m "Move pipelines migradas para .github/workflows"
