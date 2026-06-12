@@ -63,7 +63,7 @@ jobs:
 
     steps:
       - name: "Migrar repositório ${{ matrix.repos }}"
-        uses: ./.github/actions/migrate-repo@mirror-importer
+        uses: ./.github/actions/migrate-repo
         with:
           repo: ${{ matrix.repos }}
           gh_pat: ${{ env.GH_PAT }}
@@ -82,7 +82,7 @@ jobs:
         repos: ${{ fromJson(needs.setup-matrix.outputs.matrix-repos) }}
     steps:
       - name: "Configurar metadados para o repositório ${{ matrix.repos }}"
-        uses: ./.github/actions/configure-metadata@mirror-importer
+        uses: ./.github/actions/configure-metadata
         with:
           repo: ${{ matrix.repos }}
           gh_pat: ${{ env.GH_PAT }}
