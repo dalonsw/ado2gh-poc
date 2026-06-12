@@ -25,10 +25,10 @@ runs:
 
     - name: "Mover pipelines para o diretório .github/workflows/"
       shell: bash
+      working-directory: target-repo
       run: |
         mkdir -p .github/workflows/
 
-        # Busca arquivos yaml/yml em locais comuns do ADO
         PIPELINE_FILES=$(find .pipeline/ \
           \( -name '*.yaml' -o -name '*.yml' \) \
           2>/dev/null)
@@ -46,11 +46,8 @@ runs:
           echo "✅ Movido: $file → .github/workflows/$(basename $file)"
         done
 
-        # Remove diretório legado se existir
         rm -rf .pipeline/
 
-        git config user.name "github-actions[bot]"
-        git config user.email "github-actions[bot]@users.noreply.github.com"
-        git add .github/workflows/
+        git add .github/workflows/ .pipeline/
         git diff --cached --quiet || git commit -m "ci: move pipelines migradas para .github/workflows"
         git push origin main
