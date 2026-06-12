@@ -1,0 +1,37 @@
+name: Alterar Diretório das Pipelines
+description: "Move as pipelines migradas para um diretório específico no repositório GitHub."
+
+inputs:
+  repo:
+    description: "Nome do repositório a ser migrado."
+    required: true
+  gh_pat:
+    description: "Token de acesso do GitHub com permissões para criar repositórios e PRs."
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: "Formatar nome do repositório para migração"
+      uses: ./.github/actions/normalize-ado-repo-names
+      id: normalize-repo
+      with:
+        ado_repo_name: ${{ inputs.repo }}
+
+    - name: "Configurar GitHub CLI"
+      shell: bash
+      run: |
+        echo ${{ inputs.gh_pat }} | gh auth login --with-token
+
+    - name: "Mover pipelines para o diretório .github/workflows/"
+      shell: bash
+      run: |
+        echo "Movendo pipelines para o diretório .github/workflows/"
+
+        mkdir -p .github/workflows/
+        mv .pipelines/*.yaml .github/workflows/
+        rm -rf .pipelines/${{ steps.normalize-repo.outputs.repo_name }}
+
+        git add .github/workflows/*
+        git commit -m "Move pipelines migradas para .github/workflows"
+        git push origin main

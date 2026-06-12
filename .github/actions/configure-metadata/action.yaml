@@ -69,7 +69,7 @@ runs:
     - name: "Criar PR Template"
       shell: bash
       run: |
-        CONTENT=$(printf "# Descrição\nDescreva as mudanças propostas neste PR.\n\n## Tipo de mudança\n- [ ] Bug fix (correção de um problema)\n- [ ] Nova funcionalidade (adição de uma funcionalidade)\n- [ ] Melhoria (melhoria de uma funcionalidade existente)\n- [ ] Refatoração (alteração de código sem adicionar ou corrigir funcionalidades)\n- [ ] Documentação (adição ou atualização de documentação)\n- [ ] Outro (especifique)" | base64 -w0)
+        CONTENT=$(printf "## Objetivo\n_(Informe aqui o objetivo da mudança)_\n## Passos a serem executados\n- [ ] Solicitar review no [#help-re](https://team-cerc.slack.com/archives/C05FLDTK2SK)\n### Pronto para merge!" | base64 -w0)
         gh api repos/${{ inputs.gh_org }}/${{ steps.normalize-repo.outputs.repo_name }}/contents/.github/PULL_REQUEST_TEMPLATE.md \
           --method PUT \
           -f message="Add PR template" \

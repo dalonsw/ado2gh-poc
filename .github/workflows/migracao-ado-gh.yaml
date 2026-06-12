@@ -74,7 +74,7 @@ jobs:
           ado_team_project: ${{ github.event.inputs.ado_team_project }}
           archive_ado_repos: ${{ github.event.inputs.archive_ado_repos }}
 
-  configure-metadata:
+  configure-repo:
     needs: [setup-matrix, migrate-repos]
     runs-on: ubuntu-latest
     if: success()
@@ -83,6 +83,7 @@ jobs:
         repos: ${{ fromJson(needs.setup-matrix.outputs.matrix-repos) }}
     steps:
       - uses: actions/checkout@v4
+
       - name: "Configurar metadados para o repositório ${{ matrix.repos }}"
         uses: ./.github/actions/configure-metadata
         with:
@@ -93,6 +94,12 @@ jobs:
           ado_team_project: ${{ github.event.inputs.ado_team_project }}
           topic_tag: ${{ github.event.inputs.topic_tag }}
           reviewer_team: ${{ github.event.inputs.reviewer_team }}
+        
+      - name: "Transferir pipeline do Azure DevOps para GitHub Actions"
+        uses: ./.github/actions/transfer-pipelines
+        with:
+          repo: ${{ matrix.repos }}
+          gh_pat: ${{ env.GH_PAT }}
 
       - name: "Relatório de migração"
         if: always()
