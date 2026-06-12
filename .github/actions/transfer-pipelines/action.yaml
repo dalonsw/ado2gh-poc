@@ -23,30 +23,40 @@ runs:
       run: |
         echo ${{ inputs.gh_pat }} | gh auth login --with-token
 
-    - name: "Mover pipelines para o diretório .github/workflows/"
+    - name: "Mover pipelines para .github/workflows/"
       shell: bash
       run: |
-        mkdir -p .github/workflows/
+        REPO="${{ inputs.gh_org }}/${{ steps.normalize-repo.outputs.repo_name }}"
 
-        PIPELINE_FILES=$(find .pipeline/ \
-          \( -name '*.yaml' -o -name '*.yml' \) \
-          2>/dev/null)
+        # Lista arquivos .yaml/.yml em .pipeline/ via API
+        FILES=$(gh api repos/$REPO/contents/.pipeline \
+          --jq '[.[] | select(.name | test("\\.(yaml|yml)$")) | .name] | .[]' 2>/dev/null || echo "")
 
-        if [ -z "$PIPELINE_FILES" ]; then
-          echo "⚠️ Nenhum arquivo de pipeline encontrado. Pulando etapa."
+        if [ -z "$FILES" ]; then
+          echo "⚠️ Nenhum arquivo de pipeline encontrado em .pipeline/. Pulando etapa."
           exit 0
         fi
 
         echo "📦 Pipelines encontradas:"
-        echo "$PIPELINE_FILES"
+        echo "$FILES"
 
-        echo "$PIPELINE_FILES" | while read -r file; do
-          mv "$file" .github/workflows/
-          echo "✅ Movido: $file → .github/workflows/$(basename $file)"
+        echo "$FILES" | while read -r filename; do
+          # Busca conteúdo (já em base64) e sha do arquivo original
+          FILE_DATA=$(gh api repos/$REPO/contents/.pipeline/$filename)
+          CONTENT=$(echo "$FILE_DATA" | jq -r '.content' | tr -d '\n')
+          SHA=$(echo "$FILE_DATA" | jq -r '.sha')
+
+          echo "✅ Movendo: .pipeline/$filename → .github/workflows/$filename"
+
+          # Cria em .github/workflows/
+          gh api repos/$REPO/contents/.github/workflows/$filename \
+            --method PUT \
+            -f message="ci: move $filename para .github/workflows/" \
+            -f content="$CONTENT"
+
+          # Remove de .pipeline/
+          gh api repos/$REPO/contents/.pipeline/$filename \
+            --method DELETE \
+            -f message="ci: remove $filename de .pipeline/" \
+            -f sha="$SHA"
         done
-
-        rm -rf .pipeline/
-
-        git add .github/workflows/ .pipeline/
-        git diff --cached --quiet || git commit -m "ci: move pipelines migradas para .github/workflows"
-        git push origin main
