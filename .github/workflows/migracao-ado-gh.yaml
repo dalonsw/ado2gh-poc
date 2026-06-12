@@ -113,7 +113,7 @@ jobs:
           path: status.txt
 
   report-migration:
-    needs: [configure-metadata]
+    needs: [configure-repo]
     runs-on: ubuntu-latest
     if: always()
     steps:
