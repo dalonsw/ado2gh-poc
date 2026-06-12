@@ -50,7 +50,7 @@ runs:
     - name: "Adicionar descrição e tópico ao repositório ${{ steps.normalize-repo.outputs.repo_name }}"
       shell: bash
       run: |
-        gh repo edit ${{ inputs.gh_org }}/${{ steps.normalize-repo.outputs.repo_name }} --add-topic ${{ inputs.topic_tag }} --description "Migrado do Azure DevOps - Projeto/Repo: ${{ inputs.ado_team_project }}/${{ steps.normalize-repo.outputs.repo_name }}"
+        gh repo edit ${{ inputs.gh_org }}/${{ steps.normalize-repo.outputs.repo_name }} --add-topic ${{ inputs.topic_tag }} --description "Migrado do Azure DevOps - Projeto/Repo: ${{ inputs.ado_team_project }}/${{ inputs.repo }}"
     
     - name: "Configurar branch principal"
       shell: bash
