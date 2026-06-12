@@ -25,7 +25,6 @@ runs:
 
     - name: "Mover pipelines para o diretório .github/workflows/"
       shell: bash
-      working-directory: target-repo
       run: |
         mkdir -p .github/workflows/
 
