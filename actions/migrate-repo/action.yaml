@@ -28,7 +28,7 @@ runs:
   using: composite
   steps:
     - name: "Formatar nome do repositório para migração"
-      uses: ../normalize-ado-repo-names
+      uses: /.github/actions/normalize-ado-repo-names
       id: normalize-repo
       with:
         ado_repo_name: ${{ inputs.repo }}
