@@ -43,7 +43,7 @@ on:
 
 jobs:
   setup-matrix:
-    runs-on: ci
+    runs-on: ubuntu-latest
     outputs:
       matrix-repos: ${{ steps.set-matrix.outputs.repos }}
     steps:
@@ -55,7 +55,7 @@ jobs:
   
   migrate-repos:
     needs: setup-matrix
-    runs-on: ci
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         repos: ${{ fromJson(needs.setup-matrix.outputs.matrix-repos) }}
@@ -75,7 +75,7 @@ jobs:
 
   configure-metadata:
     needs: [setup-matrix, migrate-repos]
-    runs-on: ci
+    runs-on: ubuntu-latest
     if: success()
     strategy:
       matrix:
@@ -105,7 +105,7 @@ jobs:
 
   report-migration:
     needs: [configure-metadata]
-    runs-on: ci
+    runs-on: ubuntu-latest
     if: always()
     steps:
       - name: "Baixar relatórios de migração"
