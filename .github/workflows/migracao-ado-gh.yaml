@@ -100,6 +100,7 @@ jobs:
         with:
           repo: ${{ matrix.repos }}
           gh_pat: ${{ env.GH_PAT }}
+                    gh_org: ${{ github.event.inputs.target_org }}
 
       - name: "Relatório de migração"
         if: always()

@@ -8,6 +8,9 @@ inputs:
   gh_pat:
     description: "Token de acesso do GitHub com permissões para criar repositórios e PRs."
     required: true
+  gh_org:
+    description: "Organização de destino no GitHub."
+    required: true
 
 runs:
   using: composite
