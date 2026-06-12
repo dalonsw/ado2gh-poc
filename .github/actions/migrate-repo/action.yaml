@@ -98,7 +98,7 @@ runs:
         git push --mirror
 
     - name: Arquivar repo ${{ inputs.repo }} no Azure DevOps
-      if: steps.check-repo.outputs.skip != 'true' && inputs.archive_ado_repos && success()
+      if: ${{ inputs.archive_ado_repos }} == 'true' && steps.check-repo.outputs.skip != 'true' && success()
       shell: bash
       run: |
         echo "Desabilitando repositório no Azure DevOps..."
