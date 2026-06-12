@@ -1,0 +1,76 @@
+name: Configure Metadata
+description: "Configura os metadados necessários para a migração."
+
+inputs:
+  repo:
+    description: "Nome do repositório a ser migrado."
+    required: true
+  gh_pat:
+    description: "Token de acesso do GitHub com permissões para criar repositórios e PRs."
+    required: true
+  gh_org:
+    description: "Organização de destino no GitHub."
+    required: true
+  ado_org:
+    description: "Organização do Azure DevOps."
+    required: true
+  ado_team_project:
+    description: "Projeto contendo os repos a serem migrados."
+    required: true
+  topic_tag:
+    description: "Tag de tópico para adicionar nos repositórios migrados (ex: 'migrado-ado')."
+    required: true
+  reviewer_team:
+    description: "Time do GitHub para adicionar como revisor nos PRs (ex: @org/team)."
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: "Formatar nome do repositório para migração"
+      uses: ../normalize-ado-repo-names
+      id: normalize-repo
+      with:
+        ado_repo_name: ${{ inputs.repo }}
+
+    - name: "Configurar GitHub CLI"
+      shell: bash
+      run: |
+        echo ${{ inputs.gh_pat }} | gh auth login --with-token
+
+    - name: "Configurar metadados para o repositório ${{ steps.normalize-repo.outputs.repo_name }}"
+      shell: bash
+      run: |
+        echo "Repositório: ${{ steps.normalize-repo.outputs.repo_name }}"
+        echo "Organização GitHub: ${{ inputs.gh_org }}"
+        echo "Organização Azure DevOps: ${{ inputs.ado_org }}"
+        echo "Tag de tópico: ${{ inputs.topic_tag }}"
+        echo "Time revisor: ${{ inputs.reviewer_team }}"
+
+    - name: "Adicionar descrição e tópico ao repositório ${{ steps.normalize-repo.outputs.repo_name }}"
+      shell: bash
+      run: |
+        gh repo edit ${{ inputs.gh_org }}/${{ steps.normalize-repo.outputs.repo_name }} --add-topic ${{ inputs.topic_tag }} --description "Migrado do Azure DevOps - Projeto/Repo: ${{ inputs.ado_team_project }}/${{ steps.normalize-repo.outputs.repo_name }}"
+    
+    - name: "Configurar branch principal"
+      shell: bash
+      run: |
+        gh repo edit ${{ inputs.gh_org }}/${{ steps.normalize-repo.outputs.repo_name }} --default-branch main
+    
+    - name: "Criar CODEOWNERS"
+      shell: bash
+      run: |
+        CONTENT=$(printf "@${{ inputs.gh_org }}/${{ inputs.reviewer_team }}" | base64 -w0)
+        gh api repos/${{ inputs.gh_org }}/${{ steps.normalize-repo.outputs.repo_name }}/contents/.github/CODEOWNERS \
+          --method PUT \
+          -f message="Add CODEOWNERS file" \
+          -f content="$CONTENT"
+
+    - name: "Criar PR Template"
+      shell: bash
+      run: |
+        CONTENT=$(printf "# Descrição\nDescreva as mudanças propostas neste PR.\n\n## Tipo de mudança\n- [ ] Bug fix (correção de um problema)\n- [ ] Nova funcionalidade (adição de uma funcionalidade)\n- [ ] Melhoria (melhoria de uma funcionalidade existente)\n- [ ] Refatoração (alteração de código sem adicionar ou corrigir funcionalidades)\n- [ ] Documentação (adição ou atualização de documentação)\n- [ ] Outro (especifique)" | base64 -w0)
+        gh api repos/${{ inputs.gh_org }}/${{ steps.normalize-repo.outputs.repo_name }}/contents/.github/PULL_REQUEST_TEMPLATE.md \
+          --method PUT \
+          -f message="Add PR template" \
+          -f content="$CONTENT"

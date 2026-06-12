@@ -1,0 +1,112 @@
+name: Migrate Azure DevOps Repositories to GitHub
+description: "Workflow para migrar repositórios do Azure DevOps para o GitHub"
+
+inputs:
+  repo:
+    description: "Nome do repositório a ser migrado."
+    required: true
+  gh_pat:
+    description: "Token de acesso do GitHub com permissões para criar repositórios e PRs."
+    required: true
+  ado_pat:
+    description: "Personal Access Token do Azure DevOps com permissões para ler os repositórios."
+    required: true
+  gh_org:
+    description: "Organização de destino no GitHub."
+    required: true
+  ado_org:
+    description: "Organização do Azure DevOps."
+    required: true
+  ado_team_project:
+    description: "Projeto contendo os repos a serem migrados."
+    required: true
+  archive_ado_repos:
+    description: "Arquivar os repositórios no Azure DevOps após migração (default: true)."
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: "Formatar nome do repositório para migração"
+      uses: ../normalize-ado-repo-names
+      id: normalize-repo
+      with:
+        ado_repo_name: ${{ inputs.repo }}
+    - name: Verificar se o repo ${{ steps.normalize-repo.outputs.repo_name }} está vazio no GitHub
+      shell: bash
+      id: check-repo
+      run: |
+        echo "Verificando se o repo ${{ steps.normalize-repo.outputs.repo_name }} existe e está vazio no GitHub..."
+
+        HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+          -H "Authorization: token ${{ inputs.gh_pat }}" \
+          "https://api.github.com/repos/${{ inputs.gh_org }}/${{ steps.normalize-repo.outputs.repo_name }}")
+
+        if [ "$HTTP_STATUS" != "200" ]; then
+          echo "O repositório ${{ steps.normalize-repo.outputs.repo_name }} não existe (HTTP $HTTP_STATUS). Crie o repositório via Terraform no GitHub antes de rodar a migração."
+          exit 1
+        fi
+
+        REFS_RESPONSE=$(curl -s -w "\n%{http_code}" \
+          -H "Authorization: token ${{ inputs.gh_pat }}" \
+          "https://api.github.com/repos/${{ inputs.gh_org }}/${{ steps.normalize-repo.outputs.repo_name }}/git/refs")
+
+        REFS_HTTP=$(echo "$REFS_RESPONSE" | tail -1)
+        REFS_BODY=$(echo "$REFS_RESPONSE" | head -n -1)
+
+        if [ "$REFS_HTTP" = "409" ]; then
+          # 409 = "Git Repository is empty" — repo existe mas não tem commits
+          REF_COUNT=0
+        elif [ "$REFS_HTTP" = "200" ]; then
+          REF_COUNT=$(echo "$REFS_BODY" | jq 'length')
+        else
+          echo "Erro ao verificar refs do repositório ${{ steps.normalize-repo.outputs.repo_name }} (HTTP $REFS_HTTP)."
+          exit 1
+        fi
+
+        if [ "$REF_COUNT" -gt 0 ]; then
+          echo "O repositório ${{ steps.normalize-repo.outputs.repo_name }} já existe e não está vazio ($REF_COUNT refs)."
+          echo "skip=true" >> $GITHUB_OUTPUT
+          exit 1
+        else
+          echo "O repositório ${{ steps.normalize-repo.outputs.repo_name }} existe e está vazio. Continuando migração."
+          echo "skip=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: "Migrar repo ${{ steps.normalize-repo.outputs.repo_name }} via git mirror"
+      shell: bash
+      if: steps.check-repo.outputs.skip != 'true'
+      run: |
+        echo "Migrando repo: ${{ steps.normalize-repo.outputs.repo_name }}"
+
+        # Clona espelho do ADO usando o PAT na URL
+        git clone --mirror \
+          "https://anything:${{ inputs.ado_pat }}@dev.azure.com/${{ inputs.ado_org }}/${{ inputs.ado_team_project }}/_git/${{ inputs.repo }}" \
+          "${{ inputs.repo }}.git"
+
+        cd "${{ inputs.repo }}.git"
+
+        # Remove refs/pull/* que o GitHub rejeita como hidden refs
+        git for-each-ref --format='delete %(refname)' refs/pull | git update-ref --stdin
+
+        # Aponta origin para o repo já existente no GitHub
+        git remote set-url origin \
+          "https://x-access-token:${{ inputs.gh_pat }}@github.com/${{ inputs.gh_org }}/${{ steps.normalize-repo.outputs.repo_name }}.git"
+
+        # Push de todas as branches, tags e refs
+        git push --mirror
+
+    - name: Arquivar repo ${{ inputs.repo }} no Azure DevOps
+      if: steps.check-repo.outputs.skip != 'true' && inputs.archive_ado_repos && success()
+      shell: bash
+      run: |
+        echo "Desabilitando repositório no Azure DevOps..."
+        REPO_ID=$(curl -sf \
+          -H "Authorization: Basic $(echo -n ":${{ inputs.ado_pat }}" | base64 -w0)" \
+          "https://dev.azure.com/${{ inputs.ado_org }}/${{ inputs.ado_team_project }}/_apis/git/repositories/${{ inputs.repo }}?api-version=7.1" \
+          | jq -r '.id')
+        curl -sf -X PATCH \
+          -H "Authorization: Basic $(echo -n ":${{ inputs.ado_pat }}" | base64 -w0)" \
+          -H "Content-Type: application/json" \
+          "https://dev.azure.com/${{ inputs.ado_org }}/${{ inputs.ado_team_project }}/_apis/git/repositories/$REPO_ID?api-version=7.1" \
+          -d '{"isDisabled": true}'

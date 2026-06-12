@@ -32,10 +32,18 @@ on:
         required: false
         default: true
         type: boolean
+      reviewer_team:
+        description: "Time do GitHub para adicionar como revisor nos PRs (ex: team_approvers)"
+        required: true
+        type: string
+      topic_tag:
+        description: "Tag de tópico para adicionar nos repositórios migrados (ex: 'migrado-ado')"
+        required: true
+        type: string
 
 jobs:
   setup-matrix:
-    runs-on: ubuntu-latest
+    runs-on: ci
     outputs:
       matrix-repos: ${{ steps.set-matrix.outputs.repos }}
     steps:
@@ -45,90 +53,44 @@ jobs:
           repos_json=$(echo "${{ github.event.inputs.ado_repo_list }}" | tr -d ' ' | tr ',' '\n' | jq -R . | jq -s -c .)
           echo "repos=$repos_json" >> $GITHUB_OUTPUT
   
-  migrate-projects:
+  migrate-repos:
     needs: setup-matrix
-    runs-on: ubuntu-latest
+    runs-on: ci
     strategy:
       matrix:
         repos: ${{ fromJson(needs.setup-matrix.outputs.matrix-repos) }}
       fail-fast: false
+
     steps:
-      - name: Verificar se o repo ${{ matrix.repos }} está vazio no GitHub
-        id: check-repo
-        run: |
-          echo "Verificando se o repo ${{ matrix.repos }} existe e está vazio no GitHub..."
+      - name: "Migrar repositório ${{ matrix.repos }}"
+        uses: ./actions/migrate-repo
+        with:
+          repo: ${{ matrix.repos }}
+          gh_pat: ${{ env.GH_PAT }}
+          ado_pat: ${{ env.ADO_PAT }}
+          gh_org: ${{ github.event.inputs.target_org }}
+          ado_org: ${{ github.event.inputs.ado_org }}
+          ado_team_project: ${{ github.event.inputs.ado_team_project }}
+          archive_ado_repos: ${{ github.event.inputs.archive_ado_repos }}
 
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            -H "Authorization: token $GH_PAT" \
-            "https://api.github.com/repos/${{ github.event.inputs.target_org }}/${{ matrix.repos }}")
-
-          if [ "$HTTP_STATUS" != "200" ]; then
-            echo "O repositório ${{ matrix.repos }} não existe (HTTP $HTTP_STATUS). Crie o repositório via Terraform no GitHub antes de rodar a migração."
-            exit 1
-          fi
-
-          REFS_RESPONSE=$(curl -s -w "\n%{http_code}" \
-            -H "Authorization: token $GH_PAT" \
-            "https://api.github.com/repos/${{ github.event.inputs.target_org }}/${{ matrix.repos }}/git/refs")
-
-          REFS_HTTP=$(echo "$REFS_RESPONSE" | tail -1)
-          REFS_BODY=$(echo "$REFS_RESPONSE" | head -n -1)
-
-          if [ "$REFS_HTTP" = "409" ]; then
-            # 409 = "Git Repository is empty" — repo existe mas não tem commits
-            REF_COUNT=0
-          elif [ "$REFS_HTTP" = "200" ]; then
-            REF_COUNT=$(echo "$REFS_BODY" | jq 'length')
-          else
-            echo "Erro ao verificar refs do repositório ${{ matrix.repos }} (HTTP $REFS_HTTP)."
-            exit 1
-          fi
-
-          if [ "$REF_COUNT" -gt 0 ]; then
-            echo "O repositório ${{ matrix.repos }} já existe e não está vazio ($REF_COUNT refs)."
-            echo "skip=true" >> $GITHUB_OUTPUT
-            exit 1
-          else
-            echo "O repositório ${{ matrix.repos }} existe e está vazio. Continuando migração."
-            echo "skip=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: "Migrar repo ${{ matrix.repos }} via git mirror"
-        if: steps.check-repo.outputs.skip != 'true'
-        run: |
-          echo "Migrando repo: ${{ matrix.repos }}"
- 
-          # Clona espelho do ADO usando o PAT na URL
-          git clone --mirror \
-            "https://anything:${{ secrets.SOURCE_TOKEN }}@dev.azure.com/${{ github.event.inputs.ado_org }}/${{ github.event.inputs.ado_team_project }}/_git/${{ matrix.repos }}" \
-            "${{ matrix.repos }}.git"
- 
-          cd "${{ matrix.repos }}.git"
-
-          # Remove refs/pull/* que o GitHub rejeita como hidden refs
-          git for-each-ref --format='delete %(refname)' refs/pull | git update-ref --stdin
-
-          # Aponta origin para o repo já existente no GitHub
-          git remote set-url origin \
-            "https://x-access-token:${{ secrets.TARGET_TOKEN }}@github.com/${{ github.event.inputs.target_org }}/${{ matrix.repos }}.git"
- 
-          # Push de todas as branches, tags e refs
-          git push --mirror
-
-
-      - name: Arquivar repo ${{ matrix.repos }} no Azure DevOps
-        if: steps.check-repo.outputs.skip != 'true' && inputs.archive_ado_repos && success()
-        run: |
-          echo "Desabilitando repositório no Azure DevOps..."
-          REPO_ID=$(curl -sf \
-            -H "Authorization: Basic $(echo -n ":$ADO_PAT" | base64 -w0)" \
-            "https://dev.azure.com/${{ github.event.inputs.ado_org }}/${{ github.event.inputs.ado_team_project }}/_apis/git/repositories/${{ matrix.repos }}?api-version=7.1" \
-            | jq -r '.id')
-          curl -sf -X PATCH \
-            -H "Authorization: Basic $(echo -n ":$ADO_PAT" | base64 -w0)" \
-            -H "Content-Type: application/json" \
-            "https://dev.azure.com/${{ github.event.inputs.ado_org }}/${{ github.event.inputs.ado_team_project }}/_apis/git/repositories/$REPO_ID?api-version=7.1" \
-            -d '{"isDisabled": true}'
+  configure-metadata:
+    needs: [setup-matrix, migrate-repos]
+    runs-on: ci
+    if: success()
+    strategy:
+      matrix:
+        repos: ${{ fromJson(needs.setup-matrix.outputs.matrix-repos) }}
+    steps:
+      - name: "Configurar metadados para o repositório ${{ matrix.repos }}"
+        uses: ./actions/configure-metadata
+        with:
+          repo: ${{ matrix.repos }}
+          gh_pat: ${{ env.GH_PAT }}
+          gh_org: ${{ github.event.inputs.target_org }}
+          ado_org: ${{ github.event.inputs.ado_org }}
+          ado_team_project: ${{ github.event.inputs.ado_team_project }}
+          topic_tag: ${{ github.event.inputs.topic_tag }}
+          reviewer_team: ${{ github.event.inputs.reviewer_team }}
 
       - name: "Relatório de migração"
         if: always()
@@ -141,45 +103,9 @@ jobs:
           name: "status-${{ matrix.repos }}"
           path: status.txt
 
-  configure-metadata:
-    needs: [setup-matrix, migrate-projects]
-    runs-on: ubuntu-latest
-    if: success()
-    strategy:
-      matrix:
-        repos: ${{ fromJson(needs.setup-matrix.outputs.matrix-repos) }}
-    steps:
-      - name: "Configurar GitHub CLI"
-        run: |
-          echo ${{ secrets.TARGET_TOKEN }} | gh auth login --with-token
-
-      - name: "Configurar metadata dos repositórios migrados"
-        run: |
-          gh repo edit ${{ github.event.inputs.target_org }}/${{ matrix.repos }} --add-topic ${{ inputs.ado_team_project }} --description "Migrado do Azure DevOps - Projeto: ${{ github.event.inputs.ado_team_project }}"
-
-      - name: "Configurar branch principal"
-        run: |
-          gh repo edit ${{ github.event.inputs.target_org }}/${{ matrix.repos }} --default-branch main
-
-      - name: "Criar CODEOWNERS"
-        run: |
-          CONTENT=$(printf ".github/* @${{ github.event.inputs.target_org }}/grp-corporate-sre-base\n* @${{ github.event.inputs.target_org }}/grp-corporate-${{ github.event.inputs.ado_team_project }}-maintainers" | base64 -w0)
-          gh api repos/${{ github.event.inputs.target_org }}/${{ matrix.repos }}/contents/.github/CODEOWNERS \
-            --method PUT \
-            -f message="Add CODEOWNERS file" \
-            -f content="$CONTENT"
-        
-      - name: "Criar PR Template"
-        run: |
-          CONTENT=$(printf "# Descrição\nDescreva as mudanças propostas neste PR.\n\n## Tipo de mudança\n- [ ] Bug fix (correção de um problema)\n- [ ] Nova funcionalidade (adição de uma funcionalidade)\n- [ ] Melhoria (melhoria de uma funcionalidade existente)\n- [ ] Refatoração (alteração de código sem adicionar ou corrigir funcionalidades)\n- [ ] Documentação (adição ou atualização de documentação)\n- [ ] Outro (especifique)" | base64 -w0)
-          gh api repos/${{ github.event.inputs.target_org }}/${{ matrix.repos }}/contents/.github/pull_request_template.md \
-            --method PUT \
-            -f message="Add PR template" \
-            -f content="$CONTENT"
-
-  relatorio-final:
-    needs: migrate-projects
-    runs-on: ubuntu-latest
+  report-migration:
+    needs: [configure-metadata]
+    runs-on: ci
     if: always()
     steps:
       - name: "Baixar relatórios de migração"

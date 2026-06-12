@@ -1,0 +1,42 @@
+name: Formatar nome do repositório do Azure DevOps para migração
+description: "Formata o nome do repositório do Azure DevOps para o padrão esperado no GitHub, removendo caracteres inválidos e aplicando regras de formatação."
+
+inputs:
+  ado_repo_name:
+    description: "Nome original do repositório no Azure DevOps."
+    required: true
+
+outputs:
+  repo_name:
+    description: "Nome formatado do repositório para uso no GitHub."
+    value: ${{ steps.normalize-repo.outputs.repo_name }}
+
+runs:
+  using: composite
+  steps:
+  - name: Normalizar nome do repositório para kebab-case
+    shell: bash
+    id: normalize-repo
+    run: |
+      REPO_RAW="${{ inputs.ado_repo_name }}"
+
+      # 1. camelCase / PascalCase → insere hífen entre [a-z0-9] e [A-Z]
+      #    "ExemploCase" → "Exemplo-Case"  |  "exemploCase" → "exemplo-Case"
+      REPO_NAME=$(echo "$REPO_RAW" | sed 's/\([a-z0-9]\)\([A-Z]\)/\1-\2/g')
+
+      # 2. Lida com sequências ALL-CAPS seguidas de letra minúscula
+      #    "EXEMPLOCase" → "EXEMPLO-Case"
+      REPO_NAME=$(echo "$REPO_NAME" | sed 's/\([A-Z]\+\)\([A-Z][a-z]\)/\1-\2/g')
+
+      # 3. Espaços e underscores → hífens; tudo para minúsculo
+      #    "Exemplo Case" / "Exemplo_Case" → "exemplo-case"
+      REPO_NAME=$(echo "$REPO_NAME" | tr '[:upper:]' '[:lower:]' | tr ' _' '-')
+
+      # 4. Colapsa hífens consecutivos e remove do início/fim
+      REPO_NAME=$(echo "$REPO_NAME" | sed 's/-\+/-/g; s/^-//; s/-$//')
+
+      echo "Repo original : $REPO_RAW"
+      echo "Repo formatado: $REPO_NAME"
+
+      # Disponibiliza para steps seguintes
+      echo "repo_name=$REPO_NAME" >> $GITHUB_OUTPUT
